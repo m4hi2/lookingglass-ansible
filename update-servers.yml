@@ -1,0 +1,19 @@
+---
+- name: Update all Looking Glass servers to latest packages
+  hosts: lookingglass
+  become: yes
+  tasks:
+    - name: Update all packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+      register: update_result
+
+    - name: Reboot if kernel was updated
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+      when: update_result.changed and 'kernel' in update_result.results | join(' ')
+
+    - name: Display update summary
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ update_result.results | length }} packages processed"

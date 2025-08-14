@@ -1,0 +1,126 @@
+---
+- name: Install Looking Glass dependencies on all servers
+  hosts: lookingglass
+  become: yes
+  tasks:
+    - name: Stop and disable nginx (conflicts with httpd)
+      ansible.builtin.systemd:
+        name: nginx
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+
+    - name: Remove nginx package
+      ansible.builtin.dnf:
+        name: nginx
+        state: absent
+      ignore_errors: yes
+
+    - name: Install required packages
+      ansible.builtin.dnf:
+        name:
+          - httpd
+          - mod_ssl
+          - php
+          - php-fpm
+          - php-posix
+          - git
+          - traceroute
+          - mtr
+          - iperf3
+          - firewalld
+          - python3-firewall
+        state: present
+
+    - name: Start and enable firewalld
+      ansible.builtin.systemd:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Start and enable httpd
+      ansible.builtin.systemd:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Start and enable php-fpm
+      ansible.builtin.systemd:
+        name: php-fpm
+        state: started
+        enabled: yes
+
+    - name: Configure firewall for SSH (critical - don't lock ourselves out)
+      ansible.builtin.firewalld:
+        service: ssh
+        permanent: yes
+        state: enabled
+        immediate: yes
+
+    - name: Configure firewall for HTTP and HTTPS
+      ansible.builtin.firewalld:
+        service: "{{ item }}"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop:
+        - http
+        - https
+
+    - name: Configure firewall for iperf3
+      ansible.builtin.firewalld:
+        port: 5201/tcp
+        permanent: yes
+        state: enabled
+        immediate: yes
+
+    - name: Find MTR binary location
+      ansible.builtin.command: which mtr
+      register: mtr_location
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Create MTR symlink for Looking Glass
+      ansible.builtin.file:
+        src: "{{ mtr_location.stdout }}"
+        dest: /usr/local/bin/mtr
+        state: link
+      when: mtr_location.rc == 0
+      ignore_errors: yes
+
+    - name: Find mtr-packet binary location
+      ansible.builtin.command: which mtr-packet
+      register: mtr_packet_location
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Create mtr-packet symlink for Looking Glass
+      ansible.builtin.file:
+        src: "{{ mtr_packet_location.stdout }}"
+        dest: /usr/local/bin/mtr-packet
+        state: link
+      when: mtr_packet_location.rc == 0
+      ignore_errors: yes
+
+    - name: Set capabilities on MTR binary for non-root execution
+      ansible.builtin.command: setcap cap_net_raw+ep {{ mtr_location.stdout }}
+      when: mtr_location.rc == 0
+      ignore_errors: yes
+
+    - name: Set capabilities on mtr-packet binary for non-root execution  
+      ansible.builtin.command: setcap cap_net_raw+ep {{ mtr_packet_location.stdout }}
+      when: mtr_packet_location.rc == 0
+      ignore_errors: yes
+
+    - name: Verify network tools are working
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - "ping -c 1 8.8.8.8"
+        - "traceroute -m 5 8.8.8.8"
+        - "mtr --report --report-cycles 1 8.8.8.8"
+      register: network_test
+      changed_when: false
+
+    - name: Display dependency installation summary
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: Dependencies installed and services started"
