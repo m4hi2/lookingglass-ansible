@@ -3,7 +3,8 @@
   hosts: lookingglass
   become: yes
   tasks:
-    - name: Install required packages
+    # Install required packages
+    - name: Install Looking Glass dependencies
       ansible.builtin.dnf:
         name:
           - httpd
@@ -19,38 +20,26 @@
           - python3-firewall
         state: present
 
-    - name: Start and enable firewalld
+    # Start and enable services
+    - name: Start and enable services
       ansible.builtin.systemd:
-        name: firewalld
+        name: "{{ item }}"
         state: started
         enabled: yes
+      loop:
+        - firewalld
+        - httpd
+        - php-fpm
 
-    - name: Start and enable httpd
-      ansible.builtin.systemd:
-        name: httpd
-        state: started
-        enabled: yes
-
-    - name: Start and enable php-fpm
-      ansible.builtin.systemd:
-        name: php-fpm
-        state: started
-        enabled: yes
-
-    - name: Configure firewall for SSH (critical - don't lock ourselves out)
-      ansible.builtin.firewalld:
-        service: ssh
-        permanent: yes
-        state: enabled
-        immediate: yes
-
-    - name: Configure firewall for HTTP and HTTPS
+    # Configure firewall
+    - name: Configure firewall services
       ansible.builtin.firewalld:
         service: "{{ item }}"
         permanent: yes
         state: enabled
         immediate: yes
       loop:
+        - ssh
         - http
         - https
 
@@ -61,53 +50,43 @@
         state: enabled
         immediate: yes
 
-    - name: Find MTR binary location
-      ansible.builtin.command: which mtr
-      register: mtr_location
+    # Configure MTR for Looking Glass
+    - name: Check if MTR capabilities are already set
+      ansible.builtin.shell: getcap {{ item }} | grep -q cap_net_raw
+      loop:
+        - /usr/sbin/mtr
+        - /usr/sbin/mtr-packet
+      register: mtr_caps_check
+      failed_when: false
       changed_when: false
+
+    - name: Set capabilities on MTR binaries
+      ansible.builtin.command: setcap cap_net_raw+ep {{ item.item }}
+      loop: "{{ mtr_caps_check.results }}"
+      when: item.rc != 0
       ignore_errors: yes
 
-    - name: Create MTR symlink for Looking Glass
+    - name: Create MTR symlinks for Looking Glass
       ansible.builtin.file:
-        src: "{{ mtr_location.stdout }}"
-        dest: /usr/local/bin/mtr
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
         state: link
-      when: mtr_location.rc == 0
+        follow: no
+      loop:
+        - { src: /usr/sbin/mtr, dest: /usr/local/bin/mtr }
+        - { src: /usr/sbin/mtr-packet, dest: /usr/local/bin/mtr-packet }
       ignore_errors: yes
 
-    - name: Find mtr-packet binary location
-      ansible.builtin.command: which mtr-packet
-      register: mtr_packet_location
-      changed_when: false
-      ignore_errors: yes
-
-    - name: Create mtr-packet symlink for Looking Glass
-      ansible.builtin.file:
-        src: "{{ mtr_packet_location.stdout }}"
-        dest: /usr/local/bin/mtr-packet
-        state: link
-      when: mtr_packet_location.rc == 0
-      ignore_errors: yes
-
-    - name: Set capabilities on MTR binary for non-root execution
-      ansible.builtin.command: setcap cap_net_raw+ep {{ mtr_location.stdout }}
-      when: mtr_location.rc == 0
-      ignore_errors: yes
-
-    - name: Set capabilities on mtr-packet binary for non-root execution
-      ansible.builtin.command: setcap cap_net_raw+ep {{ mtr_packet_location.stdout }}
-      when: mtr_packet_location.rc == 0
-      ignore_errors: yes
-
+    # Verify installation
     - name: Verify network tools are working
       ansible.builtin.command: "{{ item }}"
       loop:
-        - "ping -c 1 8.8.8.8"
-        - "traceroute -m 5 8.8.8.8"
-        - "mtr --report --report-cycles 1 8.8.8.8"
+        - ping -c 1 8.8.8.8
+        - traceroute -m 5 8.8.8.8
+        - mtr --report --report-cycles 1 8.8.8.8
       register: network_test
       changed_when: false
 
-    - name: Display dependency installation summary
+    - name: Display installation summary
       ansible.builtin.debug:
         msg: "{{ inventory_hostname }}: Dependencies installed and services started"
