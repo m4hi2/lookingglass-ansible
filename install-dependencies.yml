@@ -3,19 +3,6 @@
   hosts: lookingglass
   become: yes
   tasks:
-    - name: Stop and disable nginx (conflicts with httpd)
-      ansible.builtin.systemd:
-        name: nginx
-        state: stopped
-        enabled: no
-      ignore_errors: yes
-
-    - name: Remove nginx package
-      ansible.builtin.dnf:
-        name: nginx
-        state: absent
-      ignore_errors: yes
-
     - name: Install required packages
       ansible.builtin.dnf:
         name:
@@ -107,7 +94,7 @@
       when: mtr_location.rc == 0
       ignore_errors: yes
 
-    - name: Set capabilities on mtr-packet binary for non-root execution  
+    - name: Set capabilities on mtr-packet binary for non-root execution
       ansible.builtin.command: setcap cap_net_raw+ep {{ mtr_packet_location.stdout }}
       when: mtr_packet_location.rc == 0
       ignore_errors: yes
