@@ -1,0 +1,213 @@
+---
+- name: Install and configure Looking Glass
+  hosts: lookingglass
+  become: yes
+  vars:
+    lg_web_root: /var/www/html
+    lg_company_name: HostOmega
+    lg_company_url: https://hostomega.com
+    lg_facility_url: https://www.peeringdb.com/net/38994
+    
+  tasks:
+    # Download and install Looking Glass
+    - name: Remove existing web content
+      ansible.builtin.file:
+        path: "{{ lg_web_root }}"
+        state: absent
+
+    - name: Create web root directory
+      ansible.builtin.file:
+        path: "{{ lg_web_root }}"
+        state: directory
+        owner: apache
+        group: apache
+        mode: '0755'
+
+    - name: Clone Looking Glass repository
+      ansible.builtin.git:
+        repo: https://github.com/hybula/lookingglass.git
+        dest: /tmp/lookingglass
+        force: yes
+
+    - name: Copy Looking Glass files to web root
+      ansible.builtin.copy:
+        src: /tmp/lookingglass/
+        dest: "{{ lg_web_root }}/"
+        owner: apache
+        group: apache
+        mode: preserve
+        remote_src: yes
+
+    - name: Set proper permissions on web root
+      ansible.builtin.file:
+        path: "{{ lg_web_root }}"
+        owner: apache
+        group: apache
+        recurse: yes
+
+    # Configure Looking Glass
+    - name: Copy config template
+      ansible.builtin.copy:
+        src: "{{ lg_web_root }}/config.dist.php"
+        dest: "{{ lg_web_root }}/config.php"
+        owner: apache
+        group: apache
+        mode: '0644'
+        remote_src: yes
+
+    - name: Configure Looking Glass settings
+      ansible.builtin.replace:
+        path: "{{ lg_web_root }}/config.php"
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+        backup: yes
+      loop:
+        - { regexp: "const LG_TITLE = 'Looking Glass';", replace: "const LG_TITLE = '{{ lg_company_name }} Looking Glass';" }
+        - { regexp: "const LG_LOGO = '<h2 style=\"color: #000000;\">Company Looking Glass</h2>';", replace: "const LG_LOGO = '<h2 style=\"color: #000000;\">{{ lg_company_name }} Looking Glass</h2>';" }
+        - { regexp: "const LG_LOGO_DARK = '<h2 style=\"color: #ffffff;\">Company Looking Glass</h2>';", replace: "const LG_LOGO_DARK = '<h2 style=\"color: #ffffff;\">{{ lg_company_name }} Looking Glass</h2>';" }
+        - { regexp: "const LG_LOGO_URL = 'https://github.com/hybula/lookingglass/';", replace: "const LG_LOGO_URL = '{{ lg_company_url }}';" }
+        - { regexp: "const LG_FACILITY = 'Nikhef';", replace: "const LG_FACILITY = '{{ lg_company_name }}';" }
+        - { regexp: "const LG_FACILITY_URL = 'https://www.peeringdb.com/fac/18';", replace: "const LG_FACILITY_URL = '{{ lg_facility_url }}';" }
+        - { regexp: "const LG_IPV4 = '127.0.0.1';", replace: "const LG_IPV4 = '{{ ansible_host }}';" }
+        - { regexp: "const LG_IPV6 = '::1';", replace: "const LG_IPV6 = '{{ lg_ipv6 | default('::1') }}';" }
+
+    # Configure speedtest settings
+    - name: Configure iperf3 commands with correct IP
+      ansible.builtin.replace:
+        path: "{{ lg_web_root }}/config.php"
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+        backup: yes
+      loop:
+        - { regexp: "const LG_SPEEDTEST_CMD_INCOMING = 'iperf3 -4 -c hostname -p 5201 -P 4';", replace: "const LG_SPEEDTEST_CMD_INCOMING = 'iperf3 -4 -c {{ ansible_host }} -p 5201 -P 4';" }
+        - { regexp: "const LG_SPEEDTEST_CMD_OUTGOING = 'iperf3 -4 -c hostname -p 5201 -P 4 -R';", replace: "const LG_SPEEDTEST_CMD_OUTGOING = 'iperf3 -4 -c {{ ansible_host }} -p 5201 -P 4 -R';" }
+
+    - name: Configure speedtest files URLs
+      ansible.builtin.replace:
+        path: "{{ lg_web_root }}/config.php"
+        regexp: "const LG_SPEEDTEST_FILES = \\[\\s*'100M'[\\s\\S]*?\\];"
+        replace: |
+          const LG_SPEEDTEST_FILES = [
+              '10M' => 'https://{{ lg_domain }}/speedtest/10MB.bin',
+              '100M' => 'https://{{ lg_domain }}/speedtest/100MB.bin',
+              '1G' => 'https://{{ lg_domain }}/speedtest/1GB.bin'
+          ];
+
+    # Configure location based on location ID
+    - name: Configure location for servers
+      ansible.builtin.replace:
+        path: "{{ lg_web_root }}/config.php"
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+        backup: yes
+      loop:
+        - { regexp: "const LG_LOCATION = 'Amsterdam, Netherlands';", replace: "const LG_LOCATION = '{{ lg_location_id }}';" }
+        - { regexp: "const LG_MAPS_QUERY = 'Amsterdam, Netherlands';", replace: "const LG_MAPS_QUERY = '{{ lg_location_id }}';" }
+
+    # Configure cross-server locations
+    - name: Configure LG_LOCATIONS for cross-referencing
+      ansible.builtin.replace:
+        path: "{{ lg_web_root }}/config.php"
+        regexp: "const LG_LOCATIONS = \\[\\s*'Location A'[\\s\\S]*?\\];"
+        replace: |
+          const LG_LOCATIONS = [
+              'BD1 - Dhaka, Bangladesh' => 'https://lg-bd1.hostomega.com/',
+              'BD3 - Dhaka, Bangladesh' => 'https://lg-bd3.hostomega.com/',
+              'US1 - New York, USA' => 'https://lg-us1.hostomega.com/'
+          ];
+
+    - name: Test PHP syntax
+      ansible.builtin.command: php -l {{ lg_web_root }}/config.php
+      register: php_syntax_check
+      changed_when: false
+
+    - name: Display syntax check result
+      ansible.builtin.debug:
+        msg: "{{ php_syntax_check.stdout }}"
+
+    # Configure SELinux for web access
+    - name: Set SELinux to permissive mode
+      ansible.builtin.selinux:
+        policy: targeted
+        state: permissive
+
+    - name: Configure SELinux boolean for httpd network connect
+      ansible.builtin.seboolean:
+        name: httpd_can_network_connect
+        state: yes
+        persistent: yes
+      ignore_errors: yes
+
+    # Create speed test files
+    - name: Create test file directory
+      ansible.builtin.file:
+        path: "{{ lg_web_root }}/speedtest"
+        state: directory
+        owner: apache
+        group: apache
+        mode: '0755'
+
+    - name: Generate speed test files
+      ansible.builtin.command: >
+        dd if=/dev/zero of={{ lg_web_root }}/speedtest/{{ item.name }}.bin
+        bs={{ item.bs }} count={{ item.count }}
+      args:
+        creates: "{{ lg_web_root }}/speedtest/{{ item.name }}.bin"
+      loop:
+        - { name: "10MB", bs: "1M", count: "10" }
+        - { name: "100MB", bs: "1M", count: "100" }
+        - { name: "1GB", bs: "1M", count: "1024" }
+      
+    - name: Set ownership on test files
+      ansible.builtin.file:
+        path: "{{ lg_web_root }}/speedtest/"
+        owner: apache
+        group: apache
+        recurse: yes
+
+    # Basic Apache configuration
+    - name: Remove default Apache welcome page
+      ansible.builtin.file:
+        path: /etc/httpd/conf.d/welcome.conf
+        state: absent
+
+    - name: Restart httpd
+      ansible.builtin.systemd:
+        name: httpd
+        state: restarted
+
+    # Configure iperf3 service
+    - name: Create iperf3 systemd service file
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=iPerf3 server daemon
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=nobody
+          ExecStart=/usr/bin/iperf3 -s -p 5201
+          Restart=always
+          RestartSec=5
+          
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/iperf3.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Reload systemd and start iperf3
+      ansible.builtin.systemd:
+        name: iperf3
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Display installation summary
+      ansible.builtin.debug:
+        msg: |
+          Looking Glass installed successfully on {{ inventory_hostname }}
+          Files located in: {{ lg_web_root }}
+          Configure Apache virtual hosts separately as needed
