@@ -8,6 +8,8 @@
     lg_company_url: https://hostomega.com
     lg_facility_url: https://www.peeringdb.com/net/38994
     lg_logo_image_url: https://hostomega.com/assets/images/header_logo.png
+    lg_footer_company_url: https://hostomega.com
+    lg_footer_source_url: https://github.com/m4hi2/lookingglass-ansible
     
   tasks:
     # Download and install Looking Glass
@@ -64,8 +66,8 @@
         backup: yes
       loop:
         - { regexp: "const LG_TITLE = 'Looking Glass';", replace: "const LG_TITLE = '{{ lg_company_name }}';" }
-        - { regexp: "const LG_LOGO = '<h2 style=\"color: #000000;\">.*</h2>';", replace: "const LG_LOGO = '<img src=\"{{ lg_logo_image_url }}\" height=\"30px\">';" }
-        - { regexp: "const LG_LOGO_DARK = '<h2 style=\"color: #ffffff;\">.*</h2>';", replace: "const LG_LOGO_DARK = '<img src=\"{{ lg_logo_image_url }}\" height=\"30px\">';" }
+        - { regexp: "const LG_LOGO = '<h2 style=\"color: #000000;\">.*</h2>';", replace: "const LG_LOGO = '<img src=\"{{ lg_logo_image_url }}\" height=\"45px\">';" }
+        - { regexp: "const LG_LOGO_DARK = '<h2 style=\"color: #ffffff;\">.*</h2>';", replace: "const LG_LOGO_DARK = '<img src=\"{{ lg_logo_image_url }}\" height=\"45px\">';" }
         - { regexp: "const LG_LOGO_URL = 'https://github.com/hybula/lookingglass/';", replace: "const LG_LOGO_URL = '{{ lg_company_url }}';" }
         - { regexp: "const LG_FACILITY = 'Nikhef';", replace: "const LG_FACILITY = '{{ lg_company_name }}';" }
         - { regexp: "const LG_FACILITY_URL = 'https://www.peeringdb.com/fac/18';", replace: "const LG_FACILITY_URL = '{{ lg_facility_url }}';" }
@@ -120,6 +122,14 @@
           const LG_LOCATIONS = [
               {{ lg_locations_array | join('\n              ') | regex_replace(',$', '') }}
           ];
+
+    # Replace footer directly in index.php
+    - name: Replace footer in index.php
+      ansible.builtin.replace:
+        path: "{{ lg_web_root }}/index.php"
+        regexp: '    <footer class="pt-3 mt-5 my-5 text-muted border-top">\s*Powered by <a href="https://github\.com/hybula/lookingglass" target="_blank">Hybula Looking Glass</a>\s*<a href="https://github\.com/hybula/lookingglass" target="_blank" class="float-end"><img src="https://img\.shields\.io/github/stars/hybula/lookingglass\?style=social" alt="GitHub"></a>\s*</footer>'
+        replace: '    <footer class="pt-3 mt-5 my-5 text-muted border-top">\n        Powered By: <a href="{{ lg_footer_company_url }}" target="_blank">{{ lg_company_name }}</a> | <a href="{{ lg_footer_source_url }}" target="_blank">Make Yours</a>\n    </footer>'
+        backup: yes
 
     - name: Test PHP syntax
       ansible.builtin.command: php -l {{ lg_web_root }}/config.php
