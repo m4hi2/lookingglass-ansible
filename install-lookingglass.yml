@@ -105,16 +105,20 @@
         - { regexp: "const LG_LOCATION = 'Amsterdam, Netherlands';", replace: "const LG_LOCATION = '{{ lg_location_id }}';" }
         - { regexp: "const LG_MAPS_QUERY = 'Amsterdam, Netherlands';", replace: "const LG_MAPS_QUERY = '{{ lg_location_id }}';" }
 
-    # Configure cross-server locations
+    # Configure cross-server locations dynamically
+    - name: Build LG_LOCATIONS array from inventory
+      ansible.builtin.set_fact:
+        lg_locations_array: "{{ lg_locations_array | default([]) + [\"'\" + hostvars[item]['lg_location_id'] + \"' => 'https://\" + hostvars[item]['lg_domain'] + \"/',\"] }}"
+      loop: "{{ groups['lookingglass'] }}"
+      run_once: true
+
     - name: Configure LG_LOCATIONS for cross-referencing
       ansible.builtin.replace:
         path: "{{ lg_web_root }}/config.php"
         regexp: "const LG_LOCATIONS = \\[\\s*'Location A'[\\s\\S]*?\\];"
         replace: |
           const LG_LOCATIONS = [
-              'BD1 - Dhaka, Bangladesh' => 'https://lg-bd1.hostomega.com/',
-              'BD3 - Dhaka, Bangladesh' => 'https://lg-bd3.hostomega.com/',
-              'US1 - New York, USA' => 'https://lg-us1.hostomega.com/'
+              {{ lg_locations_array | join('\n              ') | regex_replace(',$', '') }}
           ];
 
     - name: Test PHP syntax
