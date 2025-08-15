@@ -7,6 +7,7 @@
     lg_company_name: HostOmega
     lg_company_url: https://hostomega.com
     lg_facility_url: https://www.peeringdb.com/net/38994
+    lg_logo_image_url: https://hostomega.com/assets/images/header_logo.png
     
   tasks:
     # Download and install Looking Glass
@@ -62,9 +63,9 @@
         replace: "{{ item.replace }}"
         backup: yes
       loop:
-        - { regexp: "const LG_TITLE = 'Looking Glass';", replace: "const LG_TITLE = '{{ lg_company_name }} Looking Glass';" }
-        - { regexp: "const LG_LOGO = '<h2 style=\"color: #000000;\">Company Looking Glass</h2>';", replace: "const LG_LOGO = '<h2 style=\"color: #000000;\">{{ lg_company_name }} Looking Glass</h2>';" }
-        - { regexp: "const LG_LOGO_DARK = '<h2 style=\"color: #ffffff;\">Company Looking Glass</h2>';", replace: "const LG_LOGO_DARK = '<h2 style=\"color: #ffffff;\">{{ lg_company_name }} Looking Glass</h2>';" }
+        - { regexp: "const LG_TITLE = 'Looking Glass';", replace: "const LG_TITLE = '{{ lg_company_name }}';" }
+        - { regexp: "const LG_LOGO = '<h2 style=\"color: #000000;\">.*</h2>';", replace: "const LG_LOGO = '<img src=\"{{ lg_logo_image_url }}\" height=\"30px\">';" }
+        - { regexp: "const LG_LOGO_DARK = '<h2 style=\"color: #ffffff;\">.*</h2>';", replace: "const LG_LOGO_DARK = '<img src=\"{{ lg_logo_image_url }}\" height=\"30px\">';" }
         - { regexp: "const LG_LOGO_URL = 'https://github.com/hybula/lookingglass/';", replace: "const LG_LOGO_URL = '{{ lg_company_url }}';" }
         - { regexp: "const LG_FACILITY = 'Nikhef';", replace: "const LG_FACILITY = '{{ lg_company_name }}';" }
         - { regexp: "const LG_FACILITY_URL = 'https://www.peeringdb.com/fac/18';", replace: "const LG_FACILITY_URL = '{{ lg_facility_url }}';" }
