@@ -1,0 +1,33 @@
+---
+# Update system packages
+- import_playbook: update-servers.yml
+
+# Install dependencies  
+- import_playbook: install-dependencies.yml
+
+# Install and configure Looking Glass
+- import_playbook: install-lookingglass.yml
+
+# Final summary
+- name: Deployment Summary
+  hosts: lookingglass
+  gather_facts: no
+  tasks:
+    - name: Display final deployment summary
+      ansible.builtin.debug:
+        msg: |
+          🎉 Looking Glass deployment completed successfully on {{ inventory_hostname }}!
+          
+          Access your Looking Glass at: https://{{ lg_domain }}
+          
+          Services running:
+          - Apache (httpd) ✅
+          - PHP-FPM ✅  
+          - Firewall ✅
+          - iPerf3 ✅
+          
+          Network tools available:
+          - Ping ✅
+          - Traceroute ✅
+          - MTR ✅
+          - iPerf3 Speed Test ✅
