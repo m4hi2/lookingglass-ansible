@@ -227,8 +227,7 @@ This project is open-source. See the original [Hybula Looking Glass](https://git
 ## Credits
 
 - **Looking Glass Software**: [Hybula](https://github.com/hybula/lookingglass)
-- **Ansible Automation**: [HostOmega](https://hostomega.com)
-- **Infrastructure**: Powered by HostOmega network
+- **Infrastructure**: [HostOmega](https://hostomega.com)
 
 ---
 
